@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Shop With Link
 
 Create your store and share one link. Sign up, verify your email, create a store, get a shareable link, and manage products easily. Built for **Ghana** with **Paystack** (GHS) payments. Blue & white UI, user accounts, profile, password change, and orders.
@@ -49,3 +50,6 @@ Open http://127.0.0.1:5000
 - **Ghana (GHS)**: Currency is Ghanaian Cedi (₵). Paystack requires at least ₵0.10 per transaction. Use test keys (`sk_test_...`, `pk_test_...`) from [Paystack Dashboard](https://dashboard.paystack.com) (Ghana).
 - **Callback URL**: After payment, Paystack redirects the customer to your app. On localhost this usually works; if the redirect fails or order stays "pending", run your app behind a public URL (e.g. [ngrok](https://ngrok.com)) and set that as your app's base URL so the callback URL is reachable.
 - **Errors**: If "Pay with Paystack" fails, the message shown is the one returned by Paystack (e.g. invalid key, invalid callback). Check the terminal/console for `Paystack initialize failed` logs.
+=======
+# SHOPWITHLINK
+>>>>>>> 680691cefe8d3de3d511ecaf6bc00578e19652d2
