@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}My stores — Shop With Link{% endblock %}
+{% block content %}
+<h1>My stores</h1>
+<p><a href="{{ url_for('store_new') }}" class="btn">Create a store</a></p>
+{% if stores %}
+<ul class="store-list">
+    {% for store in stores %}
+    <li>
+        <a href="{{ url_for('store_public', slug=store.slug) }}">{{ store.name }}</a>
+        —
+        <a href="{{ url_for('store_overview', store_id=store.id) }}">Overview</a>
+        —
+        <a href="{{ url_for('store_manage', store_id=store.id) }}">Manage Products</a>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>You don't have any stores yet. <a href="{{ url_for('store_new') }}">Create your first store</a>.</p>
+{% endif %}
+{% endblock %}

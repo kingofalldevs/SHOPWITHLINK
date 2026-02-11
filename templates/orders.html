@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}My orders — Shop With Link{% endblock %}
+{% block content %}
+<div class="orders-page">
+    <h1>My orders</h1>
+    {% if orders %}
+    <ul class="orders-list">
+        {% for order in orders %}
+        <li class="order-card">
+            <div class="order-header">
+                <span class="order-ref">#{{ order.paystack_reference[:12] }}…</span>
+                <span class="order-status order-status-{{ order.status }}">{{ order.status }}</span>
+            </div>
+            <p class="order-product">{{ order.product_name }}</p>
+            <p class="order-store">from {{ order.store.name }}</p>
+            <p class="order-amount">₵{{ "%.2f"|format(order.amount|float) }}</p>
+            <p class="order-date">{{ order.paid_at.strftime('%b %d, %Y %H:%M') if order.paid_at else order.created_at.strftime('%b %d, %Y %H:%M') }}</p>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">You have no orders yet. <a href="{{ url_for('index') }}">Browse stores</a> to buy something.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Withdraw — {{ store.name }}{% endblock %}
+{% block content %}
+<div class="form-card">
+    <h1>Withdraw Store Balance</h1>
+    
+    <div style="background: #eff6ff; border: 2px solid #2563eb; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;">
+        <h2 style="margin-top: 0; color: #1e40af;">Available Balance</h2>
+        <div style="font-size: 2.5rem; font-weight: bold; color: #2563eb; margin: 0.5rem 0;">
+            ₵{{ "%.2f"|format(available_balance|float if available_balance else 0) }}
+        </div>
+        <small style="color: #1e40af; opacity: 0.8;">(Sum of paid orders - withdrawals)</small>
+    </div>
+    
+    <form method="post" class="form">
+        <label for="amount">Withdrawal Amount (₵)</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0.01" max="{{ available_balance|float if available_balance else 0 }}" required placeholder="0.00">
+        <small style="color: #6b7280;">Maximum: ₵{{ "%.2f"|format(available_balance|float if available_balance else 0) }}</small>
+        
+        <label for="account_details" style="margin-top: 1.5rem;">Account Details</label>
+        <textarea id="account_details" name="account_details" rows="4" required placeholder="Enter your bank account details, mobile money number, or other payment information..."></textarea>
+        <small style="color: #6b7280;">Provide the account details where you want to receive the withdrawal.</small>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+            <button type="submit" class="btn btn-primary">Submit Withdrawal</button>
+            <a href="{{ url_for('store_overview', store_id=store.id) }}" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+    
+    <div style="margin-top: 2rem; padding: 1rem; background: #fef3c7; border-radius: 8px; font-size: 0.9rem; color: #92400e;">
+        <strong>Note:</strong> Withdrawal requests are processed manually. The withdrawal will be recorded and deducted from your available balance. Your balance is calculated as: (Sum of all paid orders) - (Sum of all withdrawals). In a production app, you would integrate with a payment processor or banking API to process the actual transfer.
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Checkout — {{ product.name }}{% endblock %}
+{% block content %}
+<div class="checkout-page">
+    <h1>Checkout</h1>
+    <div class="checkout-layout">
+        <div class="checkout-summary">
+            <h2>{{ product.name }}</h2>
+            <p class="store-name">from {{ store.name }}</p>
+            {% if product.image_url %}
+            <div class="checkout-product-image"><img src="{{ product.image_url }}" alt="{{ product.name }}"></div>
+            {% endif %}
+            <p class="checkout-price">₵{{ "%.2f"|format(product.price|float) }}</p>
+        </div>
+        <div class="checkout-form-wrap">
+            <p class="hint">Log in to see your orders in My orders. Pay with Paystack (card, bank, etc.).</p>
+            <form method="post" class="form">
+                <label for="customer_name">Full name *</label>
+                <input type="text" id="customer_name" name="customer_name" required value="{{ request.form.get('customer_name') or '' }}" placeholder="Your name">
+                <label for="customer_email">Email *</label>
+                <input type="email" id="customer_email" name="customer_email" required value="{{ request.form.get('customer_email') or current_user.email or '' }}" placeholder="you@example.com">
+                <label for="customer_phone">Phone (optional)</label>
+                <input type="tel" id="customer_phone" name="customer_phone" value="{{ request.form.get('customer_phone') or '' }}" placeholder="+233 ...">
+                <button type="submit" class="btn btn-primary btn-block">Pay with Paystack</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

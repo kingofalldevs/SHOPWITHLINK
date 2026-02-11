@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Manage {{ store.name }} — Shop With Link{% endblock %}
+{% block content %}
+<div class="manage-header">
+    <h1>Manage: {{ store.name }}</h1>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        {% if owner_managed %}
+        <a href="{{ url_for('store_overview', store_id=store.id) }}" class="btn btn-primary">Overview</a>
+        {% endif %}
+        <a href="{{ url_for('store_public', slug=store.slug) }}" class="btn btn-outline" target="_blank">View store</a>
+    </div>
+</div>
+<div class="manage-url-box" style="background: #eff6ff; border: 2px solid #2563eb; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;">
+    <label style="display: block; font-weight: bold; margin-bottom: 0.5rem; color: #1e40af;">📤 Your shareable store link:</label>
+    <input type="text" readonly value="{{ url_for('store_public', slug=store.slug, _external=True) }}" id="storeUrl" onclick="this.select()" style="width: 100%; padding: 0.75rem; font-size: 1rem; border: 1px solid #93c5fd; border-radius: 4px; background: white;">
+    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #1e40af;">Share this link with your customers to let them view and buy your products.</p>
+</div>
+{% if manage_url %}
+<div class="manage-url-box" style="background: #fef3c7; border: 1px solid #f59e0b; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+    <label style="display: block; font-weight: bold; margin-bottom: 0.5rem; color: #92400e;">🔒 Management link (keep it secret):</label>
+    <input type="text" readonly value="{{ manage_url }}" id="manageUrl" onclick="this.select()" style="width: 100%; padding: 0.5rem; font-size: 0.9rem; border: 1px solid #fbbf24; border-radius: 4px; background: white;">
+</div>
+{% endif %}
+<h2>Products</h2>
+<p><a href="{{ url_for('product_add', store_id=store.id, token=store.secret_token if not owner_managed else none) }}" class="btn">Add product</a></p>
+{% if products %}
+<table class="product-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Price</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for product in products %}
+        <tr>
+            <td>{{ product.name }}</td>
+            <td>{{ "%.2f"|format(product.price|float) }}</td>
+            <td>
+                <a href="{{ url_for('product_edit', store_id=store.id, product_id=product.id, token=store.secret_token if not owner_managed else none) }}">Edit</a>
+                <form method="post" action="{{ url_for('product_delete', store_id=store.id, product_id=product.id, token=store.secret_token if not owner_managed else none) }}" class="inline-form" onsubmit="return confirm('Delete this product?');">
+                    <button type="submit" class="btn-link danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No products yet. <a href="{{ url_for('product_add', store_id=store.id, token=store.secret_token if not owner_managed else none) }}">Add your first product</a>.</p>
+{% endif %}
+{% endblock %}

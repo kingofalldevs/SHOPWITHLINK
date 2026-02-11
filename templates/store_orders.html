@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}All Orders — {{ store.name }}{% endblock %}
+{% block content %}
+<div class="manage-header">
+    <h1>{{ store.name }} — All Orders</h1>
+    <a href="{{ url_for('store_overview', store_id=store.id) }}" class="btn btn-outline">Back to Overview</a>
+</div>
+
+{% if orders %}
+<table class="product-table">
+    <thead>
+        <tr>
+            <th>Order ID</th>
+            <th>Product</th>
+            <th>Customer</th>
+            <th>Phone</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Order Date</th>
+            <th>Paid Date</th>
+            <th>Delivered</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for order in orders %}
+        <tr>
+            <td>#{{ order.id }}</td>
+            <td>{{ order.product_name }}</td>
+            <td>
+                {{ order.customer_name }}<br>
+                <small style="color: #6b7280;">{{ order.customer_email }}</small>
+            </td>
+            <td>{{ order.customer_phone or '—' }}</td>
+            <td>₵{{ "%.2f"|format(order.amount|float) }}</td>
+            <td>
+                {% if order.delivered_at %}
+                    <span style="color: #10b981; font-weight: bold;">✓ Delivered</span>
+                {% elif order.status == "paid" %}
+                    <span style="color: #2563eb; font-weight: bold;">Paid</span>
+                {% else %}
+                    <span style="color: #f59e0b;">{{ order.status|title }}</span>
+                {% endif %}
+            </td>
+            <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') if order.created_at else '—' }}</td>
+            <td>{{ order.paid_at.strftime('%Y-%m-%d %H:%M') if order.paid_at else '—' }}</td>
+            <td>
+                {% if order.delivered_at %}
+                    <span style="color: #10b981;">✓ {{ order.delivered_at.strftime('%Y-%m-%d') if order.delivered_at else '' }}</span>
+                {% else %}
+                    <span style="color: #6b7280;">—</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if order.status == "paid" and not order.delivered_at %}
+                <form method="post" action="{{ url_for('mark_order_delivered', store_id=store.id, order_id=order.id) }}" class="inline-form" onsubmit="return confirm('Mark order #{{ order.id }} as delivered?');">
+                    <button type="submit" class="btn-link" style="color: #10b981;">Mark Delivered</button>
+                </form>
+                {% elif order.delivered_at %}
+                <small style="color: #6b7280;">Delivered</small>
+                {% else %}
+                <small style="color: #6b7280;">—</small>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No orders yet. Share your store link to start receiving orders!</p>
+{% endif %}
+{% endblock %}

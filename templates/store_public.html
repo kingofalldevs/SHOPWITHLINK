@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}{{ store.name }} — Shop With Link{% endblock %}
+
+{% block header %}
+<header class="store-navbar">
+    <div class="store-navbar-content">
+        <a href="{{ url_for('store_public', slug=store.slug) }}" class="store-logo">{{ store.name }}</a>
+        <nav class="store-nav">
+            <a href="{{ url_for('store_cart', slug=store.slug) }}" class="store-nav-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="9" cy="21" r="1"/>
+                    <circle cx="20" cy="21" r="1"/>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                </svg>
+                <span>Cart</span>
+                {% if cart_count and cart_count > 0 %}
+                <span class="cart-badge">{{ cart_count }}</span>
+                {% endif %}
+            </a>
+            <a href="{{ url_for('store_about', slug=store.slug) }}" class="store-nav-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                <span>About</span>
+            </a>
+        </nav>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="store-hero">
+    <div class="store-hero-content">
+        <h1 class="store-title">{{ store.name }}</h1>
+        {% if store.description and store.description|trim %}
+        <p class="store-description">{{ store.description }}</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if products %}
+<div class="products-section">
+    <div class="products-header">
+        <h2>Our Products</h2>
+        <p class="products-count">{{ products|length }} product{{ 's' if products|length != 1 else '' }} available</p>
+    </div>
+    
+    <div class="ecommerce-product-grid">
+        {% for product in products %}
+        <div class="ecommerce-product-card">
+            <a href="{{ url_for('checkout', slug=store.slug, product_id=product.id) }}" class="product-link">
+                <div class="product-image-wrapper">
+                    {% if product.image_url %}
+                    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="product-img" loading="lazy">
+                    {% else %}
+                    <div class="product-image-placeholder">
+                        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2" stroke-linecap="round"/>
+                            <path d="M9 9h6v6H9z" stroke-linecap="round"/>
+                        </svg>
+                        <span>No Image</span>
+                    </div>
+                    {% endif %}
+                    <div class="product-overlay">
+                        <span class="view-product-btn">View Details</span>
+                    </div>
+                </div>
+                <div class="product-details">
+                    <h3 class="product-name">{{ product.name }}</h3>
+                    {% if product.description %}
+                    <p class="product-description">{{ product.description[:100] }}{% if product.description|length > 100 %}...{% endif %}</p>
+                    {% endif %}
+                    <div class="product-footer">
+                        <div class="product-price">
+                            <span class="currency">₵</span>
+                            <span class="amount">{{ "%.2f"|format(product.price|float) }}</span>
+                        </div>
+                        <div class="product-actions">
+                            <form method="post" action="{{ url_for('add_to_cart_route', slug=store.slug, product_id=product.id) }}" class="add-to-cart-form" style="display: inline;">
+                                <button type="submit" class="add-to-cart-btn" onclick="event.stopPropagation();">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="9" cy="21" r="1"/>
+                                        <circle cx="20" cy="21" r="1"/>
+                                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                                    </svg>
+                                    <span>Add to Cart</span>
+                                </button>
+                            </form>
+                            <a href="{{ url_for('checkout', slug=store.slug, product_id=product.id) }}" class="buy-now-btn" onclick="event.stopPropagation();">
+                                <span>Buy Now</span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="empty-state-icon">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M9 9h6v6H9z"/>
+        </svg>
+    </div>
+    <h2>No Products Available</h2>
+    <p>This store hasn't added any products yet. Check back soon!</p>
+</div>
+    {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const addToCartForms = document.querySelectorAll('.add-to-cart-form');
+    
+    addToCartForms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const button = form.querySelector('button');
+            const originalText = button.innerHTML;
+            
+            // Disable button
+            button.disabled = true;
+            button.innerHTML = '<span>Adding...</span>';
+            
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    button.innerHTML = '<span>✓ Added!</span>';
+                    // Update cart badge if exists
+                    const cartBadge = document.querySelector('.cart-badge');
+                    if (cartBadge) {
+                        cartBadge.textContent = data.cart_count;
+                    } else if (data.cart_count > 0) {
+                        // Add badge if it doesn't exist
+                        const cartLink = document.querySelector('.store-nav-link[href*="cart"]');
+                        if (cartLink) {
+                            const badge = document.createElement('span');
+                            badge.className = 'cart-badge';
+                            badge.textContent = data.cart_count;
+                            cartLink.appendChild(badge);
+                        }
+                    }
+                    setTimeout(() => {
+                        button.innerHTML = originalText;
+                        button.disabled = false;
+                    }, 1500);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                button.innerHTML = originalText;
+                button.disabled = false;
+                alert('Failed to add to cart. Please try again.');
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

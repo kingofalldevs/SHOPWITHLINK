@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Register — Shop With Link{% endblock %}
+{% block content %}
+<div class="auth-page">
+<div class="form-card">
+<h1>Create an account</h1>
+<form method="post" class="form">
+    <label for="email">Email *</label>
+    <input type="email" id="email" name="email" required placeholder="you@example.com" autocomplete="email">
+    <label for="password">Password *</label>
+    <input type="password" id="password" name="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password">
+    <button type="submit">Register</button>
+</form>
+<p class="hint">Already have an account? <a href="{{ url_for('login') }}">Log in</a>.</p>
+</div>
+</div>
+{% endblock %}

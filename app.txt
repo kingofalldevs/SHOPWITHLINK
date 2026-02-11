@@ -1,0 +1,1498 @@
+================================================================================
+                    SHOP WITH LINK - APPLICATION FLOW DOCUMENTATION
+================================================================================
+
+Generated: 2026-02-10
+Version: 1.0
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+Shop With Link is a Flask-based e-commerce platform that allows users to:
+- Create accounts with email verification
+- Create and manage online stores
+- Add products to stores
+- Share store links with customers
+- Process payments via Paystack (Ghana - GHS currency)
+- Manage orders and track deliveries
+- Withdraw store earnings
+
+Key Features:
+- User authentication with email verification (OTP via SendGrid)
+- Store creation and management
+- Product CRUD operations
+- Shopping cart functionality
+- Payment processing (Paystack integration)
+- Order confirmation emails (customer and store owner)
+- Order management and delivery tracking
+- Store balance and withdrawal system
+- Dynamic store credit calculation
+
+Technology Stack:
+- Backend: Flask (Python)
+- Database: SQLite (via SQLAlchemy ORM)
+- Authentication: Flask-Login
+- Email: SendGrid API (v3 Mail Send)
+  - Email verification (OTP)
+  - Order confirmation emails (customer & store owner)
+- Payments: Paystack API (Ghana)
+- Frontend: Jinja2 templates, CSS
+- Session Management: Flask sessions (for cart)
+
+================================================================================
+2. ARCHITECTURE OVERVIEW
+================================================================================
+
+Application Structure:
+├── app.py                    # Main Flask application, routes, business logic
+├── models.py                 # SQLAlchemy database models
+├── config.py                 # Configuration (loads from .env)
+├── requirements.txt          # Python dependencies
+├── .env                      # Environment variables (not in git)
+├── .env.example              # Example environment variables
+├── templates/                # Jinja2 HTML templates
+│   ├── base.html            # Base template with header/footer
+│   ├── index.html           # Landing page
+│   ├── register.html        # User registration
+│   ├── login.html           # User login
+│   ├── verify_email.html    # Email verification (OTP)
+│   ├── dashboard.html       # User's stores list
+│   ├── profile.html         # User profile
+│   ├── change_password.html # Password change
+│   ├── orders.html          # User's orders list
+│   ├── store_new.html       # Create new store
+│   ├── store_public.html   # Public store page (customer view)
+│   ├── store_manage.html    # Store management (products)
+│   ├── store_overview.html  # Store dashboard (stats, orders, balance)
+│   ├── store_orders.html    # All orders for a store
+│   ├── store_cart.html      # Shopping cart
+│   ├── store_about.html     # Store about page
+│   ├── cart_checkout.html   # Cart checkout
+│   ├── checkout.html        # Single product checkout
+│   ├── payment_success.html # Payment success page
+│   ├── product_form.html    # Add/edit product form
+│   ├── store_withdraw.html  # Withdrawal form
+│   └── test_sendgrid.html   # SendGrid test page
+└── static/
+    └── style.css            # Application styles
+
+Database: SQLite at instance/shopwithlink.db
+
+================================================================================
+3. ENTRY POINTS
+================================================================================
+
+Main Application Entry:
+- File: app.py
+- Entry Point: `if __name__ == "__main__": app.run(debug=debug_mode, port=5000)`
+- Port: 5000 (default)
+- Debug Mode: Controlled by FLASK_DEBUG environment variable
+
+Application Initialization Flow:
+1. Flask app created: `app = Flask(__name__, static_folder="static")`
+2. Config loaded: `app.config.from_object(Config)`
+   → Config loads from .env file via python-dotenv
+3. Database initialized: `db.init_app(app)`
+4. LoginManager configured: `login_manager = LoginManager(app)`
+5. Database migrations run: `with app.app_context(): db.create_all()`
+   → Creates tables if they don't exist
+   → Runs migration logic for schema updates
+6. Server starts: `app.run(debug=debug_mode, port=5000)`
+
+Configuration Loading (config.py):
+- Loads .env file from project root
+- Sets database URI (SQLite by default, can override with DATABASE_URL)
+- Loads API keys: PAYSTACK_SECRET_KEY, PAYSTACK_PUBLIC_KEY, SENDGRID_API_KEY
+- Sets email configuration: SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME
+- Sets SECRET_KEY for Flask sessions
+
+================================================================================
+4. DATABASE STRUCTURE
+================================================================================
+
+Database: SQLite (instance/shopwithlink.db)
+
+Tables:
+
+4.1 USERS TABLE
+    Columns:
+    - id (Integer, Primary Key)
+    - email (String(120), Unique, Not Null, Indexed)
+    - password_hash (String(256), Not Null) - Werkzeug hashed password
+    - email_verified (Boolean, Not Null, Default=False)
+    - created_at (DateTime, Default=datetime.utcnow)
+    
+    Relationships:
+    - stores (One-to-Many) → Store.user_id
+    - verification_codes (One-to-Many) → VerificationCode.user_id
+    - orders (One-to-Many) → Order.user_id
+
+4.2 VERIFICATION_CODES TABLE
+    Purpose: Store OTP verification codes securely (hashed, never plain text)
+    Columns:
+    - id (Integer, Primary Key)
+    - user_id (Integer, Foreign Key → users.id, Not Null)
+    - code_hash (String(64), Not Null) - SHA-256 hash of (salt + code)
+    - salt (String(64), Not Null) - Random salt per code
+    - expires_at (DateTime, Not Null) - UTC timezone-aware
+    - created_at (DateTime, Default=datetime.utcnow)
+    
+    Security:
+    - Codes never stored in plain text
+    - Each code has unique salt
+    - Expires after 10 minutes
+    - Old codes deleted when new one generated
+
+4.3 STORES TABLE
+    Columns:
+    - id (Integer, Primary Key)
+    - user_id (Integer, Foreign Key → users.id, Nullable, Indexed)
+      → Nullable for legacy stores (pre-authentication)
+    - name (String(120), Not Null)
+    - slug (String(120), Unique, Not Null, Indexed) - URL-friendly name
+    - description (Text, Nullable)
+    - secret_token (String(64), Not Null, Default=generate_token)
+      → Used for legacy store management via URL token
+    - balance (Numeric(12, 2), Not Null, Default=0)
+      → Legacy field, balance calculated dynamically via calculate_balance()
+    - created_at (DateTime, Default=datetime.utcnow)
+    
+    Relationships:
+    - products (One-to-Many) → Product.store_id
+    - orders (One-to-Many) → Order.store_id
+    - withdrawals (One-to-Many) → Withdrawal.store_id
+    - owner (Many-to-One) → User (via user_id)
+    
+    Methods:
+    - calculate_balance() → Returns: sum(paid orders) - sum(withdrawals)
+
+4.4 PRODUCTS TABLE
+    Columns:
+    - id (Integer, Primary Key)
+    - store_id (Integer, Foreign Key → stores.id, Not Null)
+    - name (String(200), Not Null)
+    - description (Text, Nullable)
+    - price (Numeric(10, 2), Not Null)
+    - image_url (String(500), Nullable)
+    - created_at (DateTime, Default=datetime.utcnow)
+    
+    Relationships:
+    - store (Many-to-One) → Store (via store_id)
+    - orders (One-to-Many) → Order.product_id
+
+4.5 ORDERS TABLE
+    Columns:
+    - id (Integer, Primary Key)
+    - user_id (Integer, Foreign Key → users.id, Nullable, Indexed)
+      → Nullable for guest checkout
+    - store_id (Integer, Foreign Key → stores.id, Not Null)
+    - product_id (Integer, Foreign Key → products.id, Nullable)
+      → Nullable in case product is deleted
+    - product_name (String(200), Not Null) - Snapshot of product name
+    - quantity (Integer, Not Null, Default=1)
+    - amount (Numeric(12, 2), Not Null) - Total amount for this order
+    - currency (String(3), Not Null, Default="GHS")
+    - paystack_reference (String(64), Unique, Not Null, Indexed)
+      → Format: "ord_" + token_urlsafe(16)
+      → For cart orders: "ord_xxx_productid"
+    - status (String(20), Not Null, Default="pending")
+      → Values: "pending", "paid"
+    - customer_name (String(120), Not Null)
+    - customer_email (String(120), Not Null)
+    - customer_phone (String(50), Nullable)
+    - created_at (DateTime, Default=datetime.utcnow)
+    - paid_at (DateTime, Nullable) - UTC timezone-aware
+    - delivered_at (DateTime, Nullable) - UTC timezone-aware
+    
+    Relationships:
+    - store (Many-to-One) → Store (via store_id)
+    - product (Many-to-One) → Product (via product_id)
+    - user (Many-to-One) → User (via user_id)
+
+4.6 WITHDRAWALS TABLE
+    Columns:
+    - id (Integer, Primary Key)
+    - store_id (Integer, Foreign Key → stores.id, Not Null, Indexed)
+    - amount (Numeric(12, 2), Not Null)
+    - account_details (Text, Not Null) - Bank/Mobile money details
+    - created_at (DateTime, Default=datetime.utcnow)
+    
+    Relationships:
+    - store (Many-to-One) → Store (via store_id)
+
+Database Migrations (Run on Startup):
+- Checks for table existence
+- Adds missing columns (user_id to stores, email_verified to users)
+- Migrates verification_codes from plain code to code_hash + salt
+- Adds balance column to stores (legacy)
+- Adds delivered_at to orders
+- Creates withdrawals table if missing
+
+================================================================================
+5. AUTHENTICATION FLOW
+================================================================================
+
+5.1 REGISTRATION FLOW
+    Route: POST /register
+    Flow:
+    1. User submits email and password
+    2. Validation:
+       → Email and password required
+       → Email must be unique (check database)
+       → Password minimum 8 characters
+    3. Create User:
+       → Hash password with Werkzeug: generate_password_hash(password)
+       → Set email_verified = False
+       → Save to database
+    4. Login user immediately: login_user(user)
+    5. Generate OTP:
+       → Call _generate_verification_code(user)
+       → Generate 6-digit code
+       → Create salt (32 bytes hex)
+       → Hash: SHA256(salt + code)
+       → Store code_hash and salt in VerificationCode
+       → Set expires_at = now + 10 minutes
+       → Delete old verification codes for user
+    6. Send email:
+       → Call _send_verification_email(user)
+       → Uses SendGrid v3 Mail Send API
+       → Sends HTML email with code
+    7. Redirect to /verify
+
+5.2 LOGIN FLOW
+    Route: POST /login
+    Flow:
+    1. User submits email and password
+    2. Find user by email: User.query.filter_by(email=email).first()
+    3. Verify password: check_password_hash(user.password_hash, password)
+    4. If invalid → Show error, return login page
+    5. If valid → login_user(user)
+    6. Check email_verified:
+       → If False → Redirect to /verify
+       → If True → Redirect to dashboard or next_url
+
+5.3 EMAIL VERIFICATION FLOW
+    Route: GET/POST /verify
+    Flow:
+    1. User must be logged in (@login_required)
+    2. If already verified → Redirect to dashboard
+    3. Display verification form
+    4. User submits 6-digit code
+    5. Verification:
+       → Call _verify_submitted_code(user, code)
+       → Get latest VerificationCode for user
+       → Check expiry (convert naive datetime to UTC-aware)
+       → Hash submitted code: SHA256(salt + submitted_code)
+       → Compare with stored code_hash
+    6. If valid:
+       → Set user.email_verified = True
+       → Delete verification codes
+       → Commit to database
+       → Redirect to dashboard
+    7. If invalid → Show error, allow retry
+
+5.4 RESEND VERIFICATION CODE
+    Route: POST /verify/send
+    Flow:
+    1. Check cooldown (60 seconds):
+       → Get latest VerificationCode.created_at
+       → Convert to UTC-aware if naive
+       → Check if (now - created_at) < 60 seconds
+    2. If cooldown active → Return error (429 for JSON, flash for HTML)
+    3. Generate new code and send email
+    4. Return success
+
+5.5 LOGOUT FLOW
+    Route: GET /logout
+    Flow:
+    1. Call logout_user() (Flask-Login)
+    2. Flash success message
+    3. Redirect to index
+
+5.6 SESSION MANAGEMENT
+    - Flask-Login handles user sessions
+    - Session stored in Flask session (server-side)
+    - User loader: @login_manager.user_loader → loads user by ID
+    - Login required decorator: @login_required
+    - Login view: "login" (redirects unauthenticated users)
+
+================================================================================
+6. USER JOURNEY FLOW (STEP-BY-STEP)
+================================================================================
+
+6.1 NEW USER REGISTRATION JOURNEY
+    Step 1: Landing Page (/)
+       → User visits homepage
+       → Sees "Get started" button
+       → Redirects to /register
+    
+    Step 2: Registration (/register)
+       → User enters email and password
+       → Validation checks:
+          • Email format
+          • Email uniqueness
+          • Password length (≥8 chars)
+       → User created in database
+       → Password hashed with Werkzeug
+       → User automatically logged in
+       → OTP code generated (6 digits)
+       → Code hashed with SHA-256 + salt
+       → Hash stored in VerificationCode table
+       → Email sent via SendGrid
+       → Redirect to /verify
+    
+    Step 3: Email Verification (/verify)
+       → User receives email with 6-digit code
+       → User enters code on verification page
+       → Code verification:
+          • Get latest VerificationCode for user
+          • Check expiry (10 minutes)
+          • Hash submitted code: SHA256(salt + code)
+          • Compare with stored code_hash
+       → If valid:
+          • Set email_verified = True
+          • Delete verification codes
+          • Redirect to dashboard
+       → If invalid/expired:
+          • Show error
+          • Allow resend (60s cooldown)
+    
+    Step 4: Dashboard (/dashboard)
+       → Check email_verified (redirects to /verify if False)
+       → Display user's stores
+       → Options: Create store, View stores, Profile, Orders
+
+6.2 STORE CREATION JOURNEY
+    Step 1: Create Store (/store/new)
+       → User clicks "Create store"
+       → Form: Store name (required), Description (optional)
+       → Validation:
+          • Name required
+          • Description checked for API keys (sanitize_description)
+          • Prevents saving API keys as descriptions
+       → Generate slug from name:
+          • Lowercase, remove special chars
+          • Replace spaces with hyphens
+          • Ensure uniqueness (add -1, -2, etc. if needed)
+       → Create Store:
+          • user_id = current_user.id
+          • secret_token = generate_token()
+          • balance = 0
+       → Save to database
+       → Redirect to /store/<id>/overview
+    
+    Step 2: Store Overview (/store/<id>/overview)
+       → Display dashboard:
+          • Total orders today
+          • Available balance (calculated: paid orders - withdrawals)
+          • Total withdrawn
+          • Recent orders (last 20)
+          • Recent withdrawals (last 10)
+       → Actions: Manage Products, View Store, Withdraw
+
+6.3 PRODUCT MANAGEMENT JOURNEY
+    Step 1: Add Product (/store/<id>/products/add)
+       → User clicks "Add product"
+       → Form: Name, Description, Price, Image URL
+       → Validation:
+          • Name required
+          • Price must be valid number ≥ 0
+       → Create Product:
+          • store_id = store.id
+          • Save to database
+       → Redirect to store management page
+    
+    Step 2: Edit Product (/store/<id>/products/<id>/edit)
+       → User clicks "Edit" on product
+       → Pre-fill form with existing data
+       → Same validation as add
+       → Update product fields
+       → Save to database
+       → Redirect to store management
+    
+    Step 3: Delete Product (/store/<id>/products/<id>/delete)
+       → User clicks "Delete"
+       → Confirmation dialog
+       → Delete product from database
+       → Redirect to store management
+
+6.4 CUSTOMER SHOPPING JOURNEY
+    Step 1: View Store (/store/<slug>)
+       → Customer visits store public page
+       → Custom navbar: Store name, Cart, About
+       → Hero section with store name and description
+       → Product grid:
+          • Product cards with image, name, description, price
+          • "Add to Cart" button (AJAX)
+          • "Buy Now" button (direct checkout)
+       → Cart badge shows item count
+    
+    Step 2: Add to Cart (/store/<slug>/cart/add/<product_id>)
+       → POST request (AJAX or form)
+       → Get cart from session: session["cart_<slug>"]
+       → Check if product already in cart:
+          • If yes → Increment quantity
+          • If no → Add new item
+       → Cart item structure:
+          {
+            "product_id": int,
+            "product_name": str,
+            "product_price": float,
+            "product_image_url": str,
+            "quantity": int
+          }
+       → Save to session: session["cart_<slug>"] = cart
+       → Return JSON: {success: true, cart_count: int}
+       → Update cart badge dynamically
+    
+    Step 3: View Cart (/store/<slug>/cart)
+       → Display all cart items:
+          • Product image, name, price, quantity
+          • Item total (price × quantity)
+          • Remove button for each item
+       → Calculate total: sum(item.price × item.quantity)
+       → "Proceed to Checkout" button
+       → "Continue Shopping" link
+    
+    Step 4: Cart Checkout (/store/<slug>/cart/checkout)
+       → Form: Name, Email, Phone (optional)
+       → Validation:
+          • Name and email required
+          • Total must be ≥ ₵0.10 (Paystack minimum)
+       → Create orders:
+          • One Order per cart item
+          • Reference format: "ord_xxx_productid"
+          • Base reference: "ord_xxx" (for payment)
+          • All orders linked to same customer info
+       → Store order references in session:
+          • session["cart_orders_<reference>"] = [ref1, ref2, ...]
+       → Initialize Paystack payment:
+          • Use first order, but amount = cart total
+          • Update first order.paystack_reference = base reference
+       → Redirect to Paystack payment page
+    
+    Step 5: Payment Processing
+       → Paystack handles payment
+       → Customer completes payment
+       → Paystack redirects to /payment/callback?reference=...
+    
+    Step 6: Payment Callback (/payment/callback)
+       → Extract reference from query string
+       → Find order by paystack_reference
+       → Verify payment with Paystack API:
+          • GET https://api.paystack.co/transaction/verify/{reference}
+          • Check response.status == "success"
+       → If verified:
+          • Mark order as paid: status = "paid", paid_at = now
+          • Check if cart order:
+             → If session["cart_orders_<reference>"] exists:
+                • Mark all cart orders as paid
+                • Clear cart: clear_cart(store.slug)
+                • Remove session key
+          • Commit to database
+          • Store balance automatically increases (calculated dynamically)
+       → Redirect to /payment/success
+    
+    Step 7: Payment Success (/payment/success)
+       → Display success message:
+          • "Payment Successful! Your order has been received."
+          • "We'll get in touch with you shortly."
+          • Show order reference and amount
+       → Links: Continue Shopping, View Orders (if logged in)
+
+6.5 BUY NOW (SINGLE PRODUCT) JOURNEY
+    Step 1: Click "Buy Now" on Product
+       → Redirect to /store/<slug>/product/<id>/checkout
+    
+    Step 2: Checkout Form
+       → Form: Name, Email, Phone (optional)
+       → Validation:
+          • Name and email required
+          • Price must be ≥ ₵0.10
+       → Create Order:
+          • Single order for this product
+          • Reference: "ord_" + token_urlsafe(16)
+          • Status: "pending"
+       → Initialize Paystack payment
+       → Redirect to Paystack
+    
+    Step 3-6: Same as Cart Checkout Steps 5-7
+
+6.6 STORE OWNER ORDER MANAGEMENT JOURNEY
+    Step 1: Store Overview (/store/<id>/overview)
+       → View today's orders count
+       → View available balance
+       → View recent orders (last 20)
+       → Click "View all orders" → /store/<id>/orders
+    
+    Step 2: All Orders (/store/<id>/orders)
+       → Display all orders for store:
+          • Order ID, Product, Customer info
+          • Amount, Status, Dates
+          • Delivery status
+       → For paid orders: "Mark as Delivered" button
+    
+    Step 3: Mark as Delivered (/store/<id>/orders/<id>/deliver)
+       → POST request
+       → Check order.status == "paid"
+       → Set order.delivered_at = now (UTC)
+       → Save to database
+       → Redirect to overview
+
+6.7 WITHDRAWAL JOURNEY
+    Step 1: Store Overview
+       → View available balance
+       → Click "Withdraw" button
+    
+    Step 2: Withdrawal Form (/store/<id>/withdraw)
+       → Calculate available balance:
+          • available = sum(paid orders) - sum(withdrawals)
+       → Form: Amount, Account Details
+       → Validation:
+          • Amount and account details required
+          • Amount must be positive
+          • Amount must be ≤ available balance
+       → Create Withdrawal:
+          • store_id = store.id
+          • amount = withdrawal amount
+          • account_details = user's account info
+       → Save to database
+       → Available balance decreases (calculated dynamically)
+       → Flash success message
+       → Redirect to overview
+
+================================================================================
+7. API ENDPOINTS AND PURPOSE
+================================================================================
+
+7.1 AUTHENTICATION ENDPOINTS
+    GET  /                    → Landing page (redirects authenticated users to dashboard)
+    GET  /register            → Registration form
+    POST /register            → Create user account, send OTP, login user
+    GET  /login               → Login form
+    POST /login               → Authenticate user, redirect based on verification status
+    GET  /logout              → Logout user, clear session
+    GET  /verify              → Email verification form
+    POST /verify              → Verify OTP code, mark email as verified
+    POST /verify/send         → Resend verification code (60s cooldown)
+
+7.2 USER PROFILE ENDPOINTS
+    GET  /dashboard           → List user's stores (requires login, email verified)
+    GET  /profile             → User profile page
+    GET  /profile/change-password → Password change form
+    POST /profile/change-password → Update password (requires current password)
+    GET  /orders              → List user's orders (requires login)
+
+7.3 STORE MANAGEMENT ENDPOINTS
+    GET  /store/new           → Create store form (requires login)
+    POST /store/new           → Create store, generate slug, redirect to overview
+    GET  /store/<slug>        → Public store page (anyone can view)
+    GET  /store/<slug>/cart   → Shopping cart page
+    GET  /store/<slug>/about  → Store about page
+    POST /store/<slug>/cart/add/<product_id> → Add product to cart (session)
+    POST /store/<slug>/cart/remove/<product_id> → Remove product from cart
+    GET  /store/<int:id>/overview → Store dashboard (stats, orders, balance) (requires login, owner)
+    GET  /store/<int:id>/orders → All orders for store (requires login, owner)
+    POST /store/<int:id>/orders/<order_id>/deliver → Mark order as delivered (requires login, owner)
+    GET  /store/<int:id>/withdraw → Withdrawal form (requires login, owner)
+    POST /store/<int:id>/withdraw → Process withdrawal (requires login, owner)
+    GET  /store/<int:id>/manage → Store management (products) (requires login/token)
+    GET  /store/<int:id>/products/add → Add product form (requires login/token)
+    POST /store/<int:id>/products/add → Create product (requires login/token)
+    GET  /store/<int:id>/products/<id>/edit → Edit product form (requires login/token)
+    POST /store/<int:id>/products/<id>/edit → Update product (requires login/token)
+    POST /store/<int:id>/products/<id>/delete → Delete product (requires login/token)
+
+7.4 CHECKOUT ENDPOINTS
+    GET  /store/<slug>/product/<id>/checkout → Single product checkout form
+    POST /store/<slug>/product/<id>/checkout → Process single product checkout
+    GET  /store/<slug>/cart/checkout → Cart checkout form
+    POST /store/<slug>/cart/checkout → Process cart checkout
+
+7.5 PAYMENT ENDPOINTS
+    GET  /payment/callback    → Paystack payment callback (verifies payment)
+    GET  /payment/success     → Payment success page
+
+7.6 UTILITY ENDPOINTS
+    GET  /test-sendgrid       → SendGrid test page (requires login)
+    POST /test-sendgrid       → Send test email via SendGrid
+
+================================================================================
+8. EXTERNAL INTEGRATIONS
+================================================================================
+
+8.1 SENDGRID (Email Service)
+    Purpose: Send email verification codes (OTP)
+    API: SendGrid v3 Mail Send API
+    Endpoint: https://api.sendgrid.com/v3/mail/send
+    Method: POST
+    Authentication: Bearer token (SENDGRID_API_KEY)
+    
+    Request Flow:
+    1. Generate 6-digit OTP code
+    2. Hash code with SHA-256 + salt
+    3. Store hash in database (never plain text)
+    4. Construct email payload:
+       {
+         "personalizations": [{"to": [{"email": user.email}], "subject": "..."}],
+         "from": {"email": SENDGRID_FROM_EMAIL, "name": SENDGRID_FROM_NAME},
+         "content": [
+           {"type": "text/plain", "value": plain_text_body},
+           {"type": "text/html", "value": html_body}
+         ]
+       }
+    5. POST to SendGrid API
+    6. Check response:
+       → 200/202 → Success
+       → 401 → Invalid API key
+       → Other → Parse error message
+    
+    Error Handling:
+    - Sender not verified → User-friendly message with verification link
+    - Sandbox mode → Warning to disable sandbox
+    - Network errors → Timeout/connection error messages
+    - Invalid API key → Clear error message
+    
+    Security:
+    - API key stored in .env (never in code)
+    - From email must be verified in SendGrid
+    - OTP codes never stored in plain text
+    - Codes expire after 10 minutes
+    - Rate limiting: 60 seconds between resends
+    
+    Order Confirmation Emails:
+    - Sent automatically after successful payment
+    - Customer receives: Order confirmation with details
+    - Store owner receives: New order notification with customer info
+    - Uses same SendGrid API and configuration
+    - HTML and plain text versions included
+    - Errors logged but don't block payment processing
+
+8.2 PAYSTACK (Payment Gateway)
+    Purpose: Process payments for orders
+    API: Paystack Transaction API
+    Base URL: https://api.paystack.co
+    Currency: GHS (Ghanaian Cedi)
+    Minimum Amount: ₵0.10 (10 pesewas)
+    
+    Integration Flow:
+    
+    A. Initialize Transaction:
+       Endpoint: POST /transaction/initialize
+       Request:
+       {
+         "email": order.customer_email,
+         "amount": amount_in_pesewas,  // GHS × 100
+         "currency": "GHS",
+         "reference": order.paystack_reference,
+         "callback_url": "https://yourapp.com/payment/callback",
+         "metadata": {"order_id": order.id}
+       }
+       Response:
+       {
+         "status": true,
+         "data": {
+           "authorization_url": "https://paystack.com/pay/...",
+           "reference": "..."
+         }
+       }
+       → Redirect user to authorization_url
+    
+    B. Payment Callback:
+       Endpoint: GET /payment/callback?reference=...
+       Flow:
+       1. Extract reference from query string
+       2. Find order by paystack_reference
+       3. Verify transaction:
+          → GET /transaction/verify/{reference}
+          → Check response.data.status == "success"
+       4. If verified:
+          → Mark order as paid
+          → Set paid_at timestamp
+          → If cart order: mark all cart orders as paid
+          → Clear cart from session
+          → Store balance increases automatically
+          → Send confirmation email to customer
+          → Send notification email to store owner
+       5. Redirect to success page
+    
+    Error Handling:
+    - Invalid reference → Flash error, redirect to index
+    - Payment already recorded → Flash message, redirect
+    - Verification fails → Flash error with reference
+    - Network errors → Log exception, flash error
+    
+    Security:
+    - Secret key stored in .env
+    - Reference is unique per order
+    - Payment verified server-side (never trust client)
+    - Callback URL must match registered URL
+
+8.3 SESSION STORAGE (Cart)
+    Purpose: Store shopping cart items per store
+    Storage: Flask session (server-side)
+    Key Format: "cart_<store_slug>"
+    
+    Cart Structure:
+    [
+      {
+        "product_id": int,
+        "product_name": str,
+        "product_price": float,
+        "product_image_url": str,
+        "quantity": int
+      },
+      ...
+    ]
+    
+    Operations:
+    - get_cart(store_slug) → Retrieve cart from session
+    - add_to_cart(...) → Add/increment product in cart
+    - remove_from_cart(...) → Remove product from cart
+    - clear_cart(...) → Clear cart after payment
+
+================================================================================
+9. DATA FLOW DIAGRAMS
+================================================================================
+
+9.1 USER REGISTRATION FLOW
+    User → POST /register
+         → Validate input (email, password)
+         → Check email uniqueness
+         → Hash password (Werkzeug)
+         → Create User (email_verified=False)
+         → Save to DB
+         → login_user(user)
+         → Generate OTP (6 digits)
+         → Create salt (32 bytes)
+         → Hash: SHA256(salt + code)
+         → Store VerificationCode (code_hash, salt, expires_at)
+         → Send email via SendGrid API
+         → Redirect to /verify
+         → User receives email
+         → User enters code
+         → POST /verify
+         → Verify code (hash comparison)
+         → Set email_verified=True
+         → Delete VerificationCode
+         → Redirect to /dashboard
+
+9.2 PRODUCT PURCHASE FLOW (BUY NOW)
+    Customer → /store/<slug>
+             → Click "Buy Now" on product
+             → GET /store/<slug>/product/<id>/checkout
+             → Fill checkout form (name, email, phone)
+             → POST /store/<slug>/product/<id>/checkout
+             → Validate input
+             → Check price ≥ ₵0.10
+             → Create Order (status="pending")
+             → Save to DB
+             → Call _paystack_initialize(order)
+             → POST to Paystack /transaction/initialize
+             → Get authorization_url
+             → Redirect to Paystack
+             → Customer pays on Paystack
+             → Paystack redirects to /payment/callback?reference=...
+             → GET /payment/callback
+             → Extract reference
+             → Find Order by paystack_reference
+             → GET Paystack /transaction/verify/{reference}
+             → Check status == "success"
+             → Update Order: status="paid", paid_at=now
+             → Store balance increases (calculated dynamically)
+             → Commit to DB
+             → Send confirmation email to customer (order details)
+             → Send notification email to store owner (order + customer info)
+             → Redirect to /payment/success
+             → Display success message
+
+9.3 CART PURCHASE FLOW
+    Customer → /store/<slug>
+             → Click "Add to Cart" (multiple products)
+             → POST /store/<slug>/cart/add/<id> (AJAX)
+             → Add to session["cart_<slug>"]
+             → Return JSON {success, cart_count}
+             → Update cart badge
+             → Click "Cart" in navbar
+             → GET /store/<slug>/cart
+             → Display cart items
+             → Click "Proceed to Checkout"
+             → GET /store/<slug>/cart/checkout
+             → Fill form (name, email, phone)
+             → POST /store/<slug>/cart/checkout
+             → Validate input
+             → Calculate total
+             → Create multiple Orders (one per cart item)
+             → References: "ord_xxx_productid"
+             → Store references in session["cart_orders_ord_xxx"]
+             → Update first order: amount=total, reference="ord_xxx"
+             → Initialize Paystack with first order (total amount)
+             → Redirect to Paystack
+             → Customer pays
+             → Paystack callback → /payment/callback?reference=ord_xxx
+             → Verify payment
+             → Check session["cart_orders_ord_xxx"]
+             → Mark all cart orders as paid
+             → Clear cart: clear_cart(store.slug)
+             → Remove session key
+             → Send confirmation email to customer (first order)
+             → Send notification email to store owner (order summary)
+             → Redirect to success page
+
+9.4 STORE BALANCE CALCULATION FLOW
+    Store Owner → /store/<id>/overview
+                → Display available balance
+                → Call store.calculate_balance()
+                → Query: store.orders.filter_by(status="paid")
+                → Sum all order amounts
+                → Query: store.withdrawals.all()
+                → Sum all withdrawal amounts
+                → Return: paid_orders_total - withdrawals_total
+                → Display balance
+                → Click "Withdraw"
+                → GET /store/<id>/withdraw
+                → Calculate available_balance again
+                → Display form
+                → Enter amount and account details
+                → POST /store/<id>/withdraw
+                → Validate amount ≤ available_balance
+                → Create Withdrawal record
+                → Save to DB
+                → Available balance decreases (calculated dynamically)
+                → Redirect to overview
+
+9.5 ORDER DELIVERY FLOW
+    Store Owner → /store/<id>/overview
+                → View recent orders
+                → See paid order
+                → Click "Mark as Delivered"
+                → POST /store/<id>/orders/<id>/deliver
+                → Check order.status == "paid"
+                → Set order.delivered_at = now (UTC)
+                → Save to DB
+                → Redirect to overview
+                → Order shows as "✓ Delivered"
+
+================================================================================
+10. VALIDATION STEPS
+================================================================================
+
+10.1 USER REGISTRATION VALIDATION
+    - Email: Required, must be valid format, must be unique
+    - Password: Required, minimum 8 characters
+    - On success: Create user, hash password, generate OTP
+
+10.2 LOGIN VALIDATION
+    - Email: Required, must exist in database
+    - Password: Required, must match hashed password
+    - On success: Login user, check email_verified status
+
+10.3 EMAIL VERIFICATION VALIDATION
+    - Code: Required, must be 6 digits, must be numeric
+    - Code must exist for user
+    - Code must not be expired (10 minutes)
+    - Code hash must match submitted code hash
+    - On success: Mark email as verified, delete codes
+
+10.4 STORE CREATION VALIDATION
+    - Name: Required, non-empty string
+    - Description: Optional, checked for API keys (sanitize_description)
+    - Slug: Auto-generated, must be unique
+    - On success: Create store, assign to user
+
+10.5 PRODUCT CREATION VALIDATION
+    - Name: Required, non-empty string
+    - Price: Required, must be valid number, must be ≥ 0
+    - Description: Optional
+    - Image URL: Optional
+    - On success: Create product, link to store
+
+10.6 CHECKOUT VALIDATION
+    - Name: Required, non-empty string
+    - Email: Required, valid email format
+    - Phone: Optional
+    - Amount: Must be ≥ ₵0.10 (Paystack minimum)
+    - Product must exist and belong to store
+    - On success: Create order, initialize payment
+
+10.7 WITHDRAWAL VALIDATION
+    - Amount: Required, must be valid number, must be > 0
+    - Account Details: Required, non-empty string
+    - Amount must be ≤ available balance
+    - Available balance = sum(paid orders) - sum(withdrawals)
+    - On success: Create withdrawal record
+
+10.8 PAYMENT VERIFICATION VALIDATION
+    - Reference: Required, must exist in database
+    - Order must exist
+    - Order status must be "pending" (not already paid)
+    - Paystack API must return status == "success"
+    - On success: Mark as paid, update timestamps
+
+================================================================================
+11. ERROR HANDLING STRATEGY
+================================================================================
+
+11.1 AUTHENTICATION ERRORS
+    - Invalid credentials → Flash error, return login form
+    - Email already exists → Flash error, return registration form
+    - Password too short → Flash error, return registration form
+    - Email not verified → Redirect to verification page
+    - Invalid/expired OTP → Flash error, allow retry
+
+11.2 EMAIL SENDING ERRORS
+    - SendGrid API key missing → Return error message
+    - Sender not verified → User-friendly message with fix instructions
+    - Sandbox mode → Warning with disable instructions
+    - Network timeout → Timeout error message
+    - Invalid API key (401) → Clear error message
+    - Other errors → Parse SendGrid error response
+
+11.3 PAYMENT ERRORS
+    - Invalid reference → Flash error, redirect to index
+    - Order not found → Flash error, redirect to index
+    - Payment already recorded → Flash message, redirect
+    - Paystack verification fails → Flash error with reference
+    - Network errors → Log exception, flash generic error
+    - Amount too low → Flash error, return checkout form
+    - Payment not configured → Mark as paid (testing mode)
+
+11.4 AUTHORIZATION ERRORS
+    - Unauthorized store access → abort(403)
+    - Store ownership check → Verify user_id matches
+    - Token-based access → Verify secret_token matches
+    - Login required → Redirect to login (Flask-Login)
+
+11.5 DATABASE ERRORS
+    - Migration errors → Try-catch with fallback (recreate table)
+    - Constraint violations → Flash error, return form
+    - Connection errors → Log exception, show error
+
+11.6 VALIDATION ERRORS
+    - Missing required fields → Flash error, return form
+    - Invalid format → Flash error, return form
+    - Business rule violations → Flash error, return form
+    - API key in description → Prevent save, flash error
+
+11.7 CART ERRORS
+    - Empty cart checkout → Flash error, redirect to cart
+    - Product not found → 404 error
+    - Invalid cart data → Clear cart, flash error
+
+================================================================================
+12. SECURITY MECHANISMS
+================================================================================
+
+12.1 PASSWORD SECURITY
+    - Passwords hashed with Werkzeug (PBKDF2)
+    - Never stored in plain text
+    - Minimum 8 characters required
+    - Current password required for change
+
+12.2 EMAIL VERIFICATION SECURITY
+    - OTP codes never stored in plain text
+    - SHA-256 hash with unique salt per code
+    - Codes expire after 10 minutes
+    - Rate limiting: 60 seconds between resends
+    - Old codes deleted when new one generated
+    - Timezone-aware datetime comparisons
+
+12.3 API KEY PROTECTION
+    - API keys stored in .env file (not in code)
+    - .env excluded from git (.gitignore)
+    - SendGrid API key never exposed in templates
+    - Paystack secret key only used server-side
+    - Description sanitization prevents API key exposure
+    - Automatic cleanup if API key detected in description
+
+12.4 SESSION SECURITY
+    - Flask secret key from environment variable
+    - Session data stored server-side
+    - Cart data per store (isolated)
+    - Session modified flag set on changes
+
+12.5 AUTHORIZATION SECURITY
+    - Flask-Login for user authentication
+    - @login_required decorator protects routes
+    - Store ownership verified (user_id check)
+    - Token-based access for legacy stores
+    - 403 Forbidden for unauthorized access
+
+12.6 PAYMENT SECURITY
+    - Payment verification server-side only
+    - Never trust client-side payment status
+    - Unique reference per order
+    - Paystack callback verified with API
+    - Order status checked before updates
+
+12.7 INPUT VALIDATION
+    - All user input validated
+    - SQL injection prevented (SQLAlchemy ORM)
+    - XSS prevented (Jinja2 auto-escaping)
+    - API key patterns detected and blocked
+    - Description sanitization
+
+12.8 DATABASE SECURITY
+    - Foreign key constraints enforced
+    - Unique constraints on email, slug, paystack_reference
+    - Cascade deletes for related records
+    - Migration safety checks
+
+================================================================================
+13. HELPER FUNCTIONS
+================================================================================
+
+13.1 slugify(text)
+    Purpose: Create URL-friendly slugs from store names
+    Process:
+    1. Convert to lowercase
+    2. Remove special characters (keep alphanumeric, spaces, hyphens)
+    3. Replace spaces and multiple hyphens with single hyphen
+    4. Return first 120 characters or "store" if empty
+
+13.2 sanitize_description(description)
+    Purpose: Prevent API keys from being saved/displayed
+    Process:
+    1. Check if description exists
+    2. Check for API key patterns (case-insensitive):
+       - "SG." (SendGrid)
+       - "sk_" (Secret keys)
+       - "pk_" (Public keys)
+       - "Bearer "
+       - "API_KEY"
+       - "SECRET_KEY"
+       - "SENDGRID_API_KEY"
+       - "PAYSTACK"
+    3. If pattern found → Return None (hide description)
+    4. Otherwise → Return description
+
+13.3 get_cart(store_slug)
+    Purpose: Retrieve cart items from session
+    Returns: List of cart items or empty list
+    Key: session["cart_<store_slug>"]
+
+13.4 add_to_cart(store_slug, product_id, product_name, product_price, image_url)
+    Purpose: Add product to cart or increment quantity
+    Process:
+    1. Get cart from session
+    2. Check if product already in cart
+    3. If yes → Increment quantity
+    4. If no → Add new item
+    5. Save to session
+    6. Set session.modified = True
+
+13.5 remove_from_cart(store_slug, product_id)
+    Purpose: Remove product from cart
+    Process:
+    1. Get cart from session
+    2. Filter out product by product_id
+    3. Save to session
+    4. Set session.modified = True
+
+13.6 clear_cart(store_slug)
+    Purpose: Clear cart after payment
+    Process:
+    1. Remove session["cart_<store_slug>"]
+    2. Set session.modified = True
+
+13.7 get_manage_token()
+    Purpose: Get store management token from query or session
+    Returns: Token string or None
+
+13.8 require_store_manage(store)
+    Purpose: Verify user can manage store
+    Process:
+    1. Check if user owns store (user_id match)
+    2. If not, check token (query param or session)
+    3. If valid token → Store in session
+    4. If neither → abort(403)
+
+13.9 store_manage_url(store)
+    Purpose: Generate correct management URL
+    Returns: URL with token if legacy store, without if owned
+
+13.10 _generate_verification_code(user)
+    Purpose: Generate secure OTP code
+    Process:
+    1. Generate 6-digit random code
+    2. Create unique salt (32 bytes hex)
+    3. Hash: SHA256(salt + code)
+    4. Set expires_at = now + 10 minutes (UTC)
+    5. Delete old codes for user
+    6. Save VerificationCode to database
+    7. Return plain code (for email only, never stored)
+
+13.11 _send_verification_email(user)
+    Purpose: Send OTP via SendGrid
+    Process:
+    1. Validate SendGrid config (API key exists)
+    2. Generate code via _generate_verification_code()
+    3. Construct email payload (HTML + plain text)
+    4. POST to SendGrid API
+    5. Check response (200/202 = success)
+    6. Parse errors for user-friendly messages
+    7. Return (success: bool, error_message: str)
+
+13.12 _verify_submitted_code(user, submitted_code)
+    Purpose: Verify OTP code
+    Process:
+    1. Validate code format (6 digits)
+    2. Get latest VerificationCode for user
+    3. Check expiry (convert naive datetime to UTC-aware)
+    4. Hash submitted code: SHA256(salt + code)
+    5. Compare with stored code_hash
+    6. Return True if match and not expired
+
+13.13 _paystack_initialize(order)
+    Purpose: Initialize Paystack payment
+    Process:
+    1. Build callback URL
+    2. Convert amount to pesewas (GHS × 100)
+    3. Check minimum (10 pesewas = ₵0.10)
+    4. POST to Paystack /transaction/initialize
+    5. Extract authorization_url from response
+    6. Return (authorization_url, error_message)
+
+13.14 _redirect_orders_or_index(order)
+    Purpose: Redirect after payment based on user status
+    Returns: Redirect to /orders if user logged in and owns order, else /index
+
+13.15 _send_email_via_sendgrid(to_email, subject, html_content, plain_content)
+    Purpose: Generic SendGrid email sender (reusable for all emails)
+    Process:
+    1. Validate SendGrid API key exists
+    2. Get from_email and from_name from config
+    3. Construct payload with HTML and plain text content
+    4. POST to SendGrid v3 Mail Send API
+    5. Check response (200/202 = success)
+    6. Return (success: bool, error_message: str)
+
+13.16 _send_order_confirmation_email(order, is_customer=True)
+    Purpose: Send order confirmation email to customer or store owner
+    Parameters:
+    - order: Order object
+    - is_customer: True for customer email, False for store owner email
+    Process:
+    If is_customer:
+      1. To: order.customer_email
+      2. Subject: "Order Confirmation - {product} from {store}"
+      3. Content: Order details, payment confirmation, next steps
+      4. Message: "We'll get in touch with you shortly"
+    If not is_customer (store owner):
+      1. To: store.owner.email
+      2. Subject: "New Order Received - {product} from {store}"
+      3. Content: Order details, customer information, action required
+      4. Includes link to store dashboard
+    Returns: (success: bool, error_message: str)
+
+================================================================================
+14. BACKGROUND PROCESSES
+================================================================================
+
+14.1 DATABASE MIGRATIONS
+    Trigger: On application startup (with app.app_context())
+    Process:
+    1. Check table existence
+    2. Check column existence
+    3. Add missing columns/tables
+    4. Migrate data if needed
+    5. Handle SQLite limitations (DROP COLUMN fallback)
+    
+    Migrations:
+    - Add user_id to stores (for authentication)
+    - Add email_verified to users
+    - Migrate verification_codes (plain code → code_hash + salt)
+    - Add balance to stores (legacy)
+    - Add delivered_at to orders
+    - Create withdrawals table
+
+14.2 AUTOMATIC CLEANUP
+    - API keys in store descriptions → Automatically removed on display
+    - Old verification codes → Deleted when new one generated
+    - Expired verification codes → Ignored during verification
+
+================================================================================
+15. FRONTEND → BACKEND INTERACTIONS
+================================================================================
+
+15.1 AJAX REQUESTS
+    - Add to Cart: POST /store/<slug>/cart/add/<id>
+      → Headers: X-Requested-With: XMLHttpRequest
+      → Response: JSON {success: bool, cart_count: int}
+      → Updates cart badge dynamically
+    
+    - Remove from Cart: POST /store/<slug>/cart/remove/<id>
+      → Headers: X-Requested-With: XMLHttpRequest
+      → Response: JSON {success: bool, cart_count: int}
+
+15.2 FORM SUBMISSIONS
+    - Registration, Login, Checkout, Withdrawal → Standard POST forms
+    - Flash messages for feedback
+    - Redirects after success/error
+
+15.3 TEMPLATE RENDERING
+    - Jinja2 templates render server-side
+    - Dynamic data from database
+    - Flash messages displayed
+    - User authentication state checked
+
+15.4 SESSION MANAGEMENT
+    - Cart stored in Flask session
+    - Cart order references stored in session
+    - Store management tokens in session
+    - User sessions via Flask-Login
+
+================================================================================
+16. DATA FLOW SUMMARY
+================================================================================
+
+16.1 USER DATA FLOW
+    Registration → User Model → Database
+    Login → Session → Flask-Login
+    Profile → User Model → Template
+    Password Change → Hash → User Model → Database
+
+16.2 STORE DATA FLOW
+    Create Store → Store Model → Database
+    View Store → Database → SafeStore Object → Template
+    Manage Store → Database → Template → Updates → Database
+
+16.3 PRODUCT DATA FLOW
+    Add Product → Product Model → Database
+    View Products → Database → Template
+    Edit Product → Database → Form → Updates → Database
+    Delete Product → Database → Cascade Delete
+
+16.4 ORDER DATA FLOW
+    Checkout → Order Model (pending) → Database
+    Payment → Paystack API → Callback → Order Update (paid) → Database
+    View Orders → Database → Template
+    Mark Delivered → Order Update → Database
+
+16.5 CART DATA FLOW
+    Add to Cart → Session → JSON Response
+    View Cart → Session → Template
+    Checkout → Session → Orders → Database → Payment
+    Payment Success → Clear Session → Database Update
+
+16.6 BALANCE DATA FLOW
+    Payment Success → Order (paid) → Database
+    Calculate Balance → Query Paid Orders → Query Withdrawals → Calculate
+    Withdrawal → Withdrawal Model → Database
+    Balance Display → Calculate → Template
+
+================================================================================
+17. SECURITY CONSIDERATIONS
+================================================================================
+
+17.1 AUTHENTICATION SECURITY
+    ✅ Passwords hashed (Werkzeug PBKDF2)
+    ✅ Email verification required
+    ✅ OTP codes hashed (SHA-256 + salt)
+    ✅ Session management (Flask-Login)
+    ✅ Login required decorators
+
+17.2 AUTHORIZATION SECURITY
+    ✅ Store ownership verification
+    ✅ Token-based access for legacy stores
+    ✅ 403 Forbidden for unauthorized access
+    ✅ User ID checks
+
+17.3 DATA SECURITY
+    ✅ API keys in .env (not in code)
+    ✅ Description sanitization
+    ✅ SQL injection prevention (ORM)
+    ✅ XSS prevention (Jinja2 escaping)
+
+17.4 PAYMENT SECURITY
+    ✅ Server-side verification only
+    ✅ Unique references per order
+    ✅ Paystack API verification
+    ✅ Order status checks
+
+17.5 SESSION SECURITY
+    ✅ Secret key from environment
+    ✅ Server-side session storage
+    ✅ Session modification tracking
+
+================================================================================
+18. ERROR HANDLING PATHS
+================================================================================
+
+18.1 AUTHENTICATION ERRORS
+    Invalid Login → Flash Error → Return Login Form
+    Email Exists → Flash Error → Return Registration Form
+    Password Too Short → Flash Error → Return Registration Form
+    Email Not Verified → Redirect to Verification Page
+
+18.2 PAYMENT ERRORS
+    Invalid Reference → Flash Error → Redirect to Index
+    Order Not Found → Flash Error → Redirect to Index
+    Verification Failed → Flash Error → Show Reference
+    Network Error → Log Exception → Flash Generic Error
+
+18.3 AUTHORIZATION ERRORS
+    Unauthorized Access → abort(403) → 403 Page
+    Store Not Owned → abort(403) → 403 Page
+    Invalid Token → abort(403) → 403 Page
+
+18.4 VALIDATION ERRORS
+    Missing Fields → Flash Error → Return Form
+    Invalid Format → Flash Error → Return Form
+    Business Rule Violation → Flash Error → Return Form
+
+================================================================================
+19. COMPLETE USER JOURNEY MAP
+================================================================================
+
+NEW USER JOURNEY:
+1. Visit / → Landing Page
+2. Click "Get started" → /register
+3. Fill registration form → POST /register
+4. Account created → OTP sent → Redirect to /verify
+5. Check email → Enter code → POST /verify
+6. Code verified → Redirect to /dashboard
+7. Click "Create store" → /store/new
+8. Fill store form → POST /store/new
+9. Store created → Redirect to /store/<id>/overview
+10. Click "Manage Products" → /store/<id>/manage
+11. Click "Add product" → /store/<id>/products/add
+12. Fill product form → POST /store/<id>/products/add
+13. Product added → Redirect to management
+14. Click "View Store" → /store/<slug>
+15. Share link with customers
+
+CUSTOMER JOURNEY:
+1. Visit /store/<slug> → Public Store Page
+2. Browse products → See product cards
+3. Click "Add to Cart" → AJAX POST → Cart updated
+4. Click "Cart" in navbar → /store/<slug>/cart
+5. Review items → Click "Proceed to Checkout"
+6. Fill checkout form → POST /store/<slug>/cart/checkout
+7. Orders created → Redirect to Paystack
+8. Complete payment → Paystack redirects to /payment/callback
+9. Payment verified → Orders marked paid → Redirect to /payment/success
+10. See success message → "We'll get in touch with you shortly"
+
+STORE OWNER JOURNEY (After Sale):
+1. Visit /store/<id>/overview → See new order
+2. View order details → See customer info
+3. Fulfill order → Mark as delivered → POST /store/<id>/orders/<id>/deliver
+4. View balance → See available balance
+5. Request withdrawal → /store/<id>/withdraw
+6. Fill withdrawal form → POST /store/<id>/withdraw
+7. Withdrawal recorded → Balance decreases
+
+================================================================================
+20. KEY DECISIONS AND RATIONALE
+================================================================================
+
+20.1 WHY SESSION-BASED CART?
+    - Simple implementation
+    - No database overhead for temporary data
+    - Per-store isolation
+    - Automatic cleanup on logout
+    - Easy to clear after payment
+
+20.2 WHY DYNAMIC BALANCE CALCULATION?
+    - Always accurate (no sync issues)
+    - Single source of truth (orders and withdrawals)
+    - No balance update bugs
+    - Easy to audit
+
+20.3 WHY HASHED OTP CODES?
+    - Security best practice
+    - Prevents code exposure if database compromised
+    - Unique salt per code prevents rainbow table attacks
+    - Codes never stored in plain text
+
+20.4 WHY PAYSTACK FOR GHANA?
+    - User requirement (Ghana market)
+    - GHS currency support
+    - Good API documentation
+    - Reliable payment processing
+
+20.5 WHY SENDGRID FOR EMAIL?
+    - Reliable email delivery
+    - Good API for programmatic sending
+    - HTML email support
+    - Better than SMTP for programmatic use
+
+20.6 WHY SQLITE?
+    - Simple deployment (no separate database server)
+    - Good for small to medium scale
+    - Easy backups (single file)
+    - Can migrate to PostgreSQL later if needed
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+This document will be automatically updated when changes are made to the codebase.
+Last Updated: 2026-02-10
+
+================================================================================
+21. ORDER CONFIRMATION EMAIL SYSTEM
+================================================================================
+
+21.1 CUSTOMER CONFIRMATION EMAIL
+    Trigger: After successful payment verification
+    Recipient: order.customer_email
+    Subject: "Order Confirmation - {product_name} from {store_name}"
+    Content:
+    - Payment confirmation message
+    - Order reference number
+    - Product name and quantity
+    - Amount paid
+    - Store name
+    - Order date/time
+    - Next steps message: "We'll get in touch with you shortly"
+    - Contact information note
+    
+    Flow:
+    Payment Verified → Mark Order Paid → Send Customer Email → Continue
+
+21.2 STORE OWNER NOTIFICATION EMAIL
+    Trigger: After successful payment verification
+    Recipient: store.owner.email (if store has owner)
+    Subject: "New Order Received - {product_name} from {store_name}"
+    Content:
+    - New order notification
+    - Order reference number
+    - Product name and quantity
+    - Amount received
+    - Order date/time
+    - Customer information:
+      • Name
+      • Email
+      • Phone (if provided)
+    - Action required message
+    - Direct link to store dashboard
+    
+    Flow:
+    Payment Verified → Mark Order Paid → Send Store Owner Email → Continue
+
+21.3 EMAIL SENDING IMPLEMENTATION
+    Function: _send_order_confirmation_email(order, is_customer)
+    Uses: _send_email_via_sendgrid() helper
+    Error Handling:
+    - Email failures logged but don't block payment
+    - Errors printed to console for debugging
+    - Payment still processes successfully even if email fails
+    
+    Integration Points:
+    - Payment callback (/payment/callback) - After payment verified
+    - Single product checkout - After order created (testing mode)
+    - Cart checkout - After orders created (testing mode)
+    
+    Email Content Features:
+    - Professional HTML formatting
+    - Responsive design
+    - Clear call-to-action buttons
+    - Order details in structured format
+    - Customer/Store owner specific messaging
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

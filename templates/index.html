@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Shop With Link — Create your store and share one link{% endblock %}
+{% block content %}
+<div class="hero">
+    <h1>Create your store and share one link</h1>
+    <p class="lead">Sign up, verify your email, create a store, and get a shareable link. Manage your products easily.</p>
+    <div class="hero-actions">
+        <a href="{{ url_for('register') }}" class="btn btn-primary">Get started</a>
+        <a href="{{ url_for('login') }}" class="btn btn-outline">Log in</a>
+    </div>
+</div>
+<div class="form-card" style="max-width: 800px; margin: 3rem auto;">
+    <h2>How it works</h2>
+    <ol style="text-align: left; max-width: 600px; margin: 0 auto; line-height: 2;">
+        <li><strong>Sign up</strong> — Create your account with email and password</li>
+        <li><strong>Verify email</strong> — Enter the 6-digit code sent to your email</li>
+        <li><strong>Create a store</strong> — Give it a name and description</li>
+        <li><strong>Get your link</strong> — Share your store's unique link with customers</li>
+        <li><strong>Manage products</strong> — Add, edit, and delete products easily</li>
+    </ol>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if product else 'Add' }} product — {{ store.name }}{% endblock %}
+{% block content %}
+<h1>{{ 'Edit product' if product else 'Add product' }}</h1>
+<p><a href="{{ manage_base }}">← Back to {{ store.name }}</a></p>
+<form method="post" class="form">
+    <label for="name">Product name *</label>
+    <input type="text" id="name" name="name" required value="{{ product.name if product else '' }}" placeholder="Product name">
+    <label for="description">Description (optional)</label>
+    <textarea id="description" name="description" rows="3" placeholder="Describe the product…">{{ product.description if product else '' }}</textarea>
+    <label for="price">Price *</label>
+    <input type="text" id="price" name="price" required value="{{ "%.2f"|format(product.price|float) if product else '' }}" placeholder="0.00">
+    <label for="image_url">Image URL (optional)</label>
+    <input type="url" id="image_url" name="image_url" value="{{ product.image_url if product else '' }}" placeholder="https://…">
+    <button type="submit">{{ 'Update' if product else 'Add' }} product</button>
+</form>
+{% endblock %}

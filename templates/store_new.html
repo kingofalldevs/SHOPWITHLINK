@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Create store — Shop With Link{% endblock %}
+{% block content %}
+<h1>Create your store</h1>
+<form method="post" class="form">
+    <label for="name">Store name *</label>
+    <input type="text" id="name" name="name" required placeholder="My Shop">
+    <label for="description">Description (optional)</label>
+    <textarea id="description" name="description" rows="3" placeholder="What you sell…"></textarea>
+    <button type="submit">Create store</button>
+</form>
+<p class="hint">After creating, you’ll get a secret management link. Save it to add and edit products.</p>
+{% endblock %}

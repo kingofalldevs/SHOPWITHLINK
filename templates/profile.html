@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Profile — Shop With Link{% endblock %}
+{% block content %}
+<div class="profile-card">
+    <h1>Profile</h1>
+    <dl class="profile-dl">
+        <dt>Email</dt>
+        <dd>{{ current_user.email }}</dd>
+        <dt>Member since</dt>
+        <dd>{{ current_user.created_at.strftime('%B %d, %Y') if current_user.created_at else '—' }}</dd>
+    </dl>
+    <p>
+        <a href="{{ url_for('change_password') }}" class="btn btn-outline">Change password</a>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline">My stores</a>
+        <a href="{{ url_for('orders_list') }}" class="btn btn-outline">My orders</a>
+    </p>
+</div>
+{% endblock %}

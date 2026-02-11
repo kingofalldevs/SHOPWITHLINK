@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Shop With Link{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    {% block header %}
+    <header class="site-header">
+        <a href="{{ url_for('index') }}" class="logo">Shop With Link</a>
+        <nav>
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('dashboard') }}">My stores</a>
+            <a href="{{ url_for('store_new') }}">Create store</a>
+            <a href="{{ url_for('orders_list') }}">My orders</a>
+            <a href="{{ url_for('profile') }}">Profile</a>
+            <a href="{{ url_for('logout') }}">Log out</a>
+            {% else %}
+            <a href="{{ url_for('login') }}">Log in</a>
+            <a href="{{ url_for('register') }}">Register</a>
+            {% endif %}
+        </nav>
+    </header>
+    {% endblock %}
+    <main class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                    {% for category, message in messages %}
+                        <li class="flash {{ category }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="site-footer">
+        <p>Shop With Link — create your store and share one link.</p>
+    </footer>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

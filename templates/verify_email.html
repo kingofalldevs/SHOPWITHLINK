@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Verify your email — Shop With Link{% endblock %}
+{% block content %}
+<div class="form-card">
+    <h1>Verify your email</h1>
+    <p class="lead">We sent a 6-digit code to <strong>{{ current_user.email }}</strong>. Enter it below.</p>
+    <form method="post" class="form">
+        <label for="code">Verification code</label>
+        <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" minlength="6" required placeholder="000000" autocomplete="one-time-code">
+        <button type="submit" class="btn btn-primary">Verify</button>
+    </form>
+    <p class="hint">Didn't get the email?
+        <form method="post" action="{{ url_for('resend_verification') }}" class="inline-form" style="display:inline;">
+            <button type="submit" class="btn-link">Resend code</button>
+        </form>
+        (Wait 1 minute between requests.)
+    </p>
+    <p style="margin-top: 1rem; font-size: 0.9rem;">
+        <a href="{{ url_for('test_sendgrid') }}" class="btn-link">🔧 Test SendGrid configuration</a>
+    </p>
+</div>
+{% endblock %}
